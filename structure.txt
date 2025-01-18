@@ -1,0 +1,23 @@
+habit-tracker-infra/
+├── main.tf                # Entry point where all resources are defined and modules are called
+├── variables.tf           # Defines input variables for reusability and parameterization. 
+│                          # Terraform expects a region variable, but if the user doesn’t provide it, use default
+├── outputs.tf             # Defines outputs to expose data (e.g., EKS cluster name, ECR URL)
+├── terraform.tfvars       # Holds values for variables (specific to your environment, e.g., dev, prod)
+├── modules/
+│   ├── ecr/               # Module for creating ECR repositories
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   ├── eks/               # Module for setting up EKS clusters
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   ├── vpc/               # Module for creating VPCs
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   ├── rds/               # Module for provisioning RDS databases (if needed)
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── outputs.tf
