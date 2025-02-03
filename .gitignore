@@ -1,12 +1,18 @@
 # Terraform state files
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
 
 # Terraform configuration directory
-.terraform/
+terraform/.terraform/
 
 # Terraform variables files
 *.tfvars
 
 # Sensitive configuration files
 *.env
+
+# old files for backup
+old-files/
+
+# sensitive files
+terraform/admin_accessKeys.csv

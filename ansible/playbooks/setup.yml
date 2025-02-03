@@ -1,0 +1,156 @@
+- name: Setup App Server and Jenkins Server
+  hosts: app
+  become: yes
+  gather_facts: yes
+  vars:
+    rds_endpoint: "{{ lookup('env', 'RDS_ENDPOINT') }}"
+    rds_db_name: "{{ lookup('env', 'RDS_DB_NAME') }}"
+    rds_user: "{{ lookup('env', 'RDS_USER') }}"
+    rds_password: "{{ lookup('env', 'RDS_PASSWORD') }}"
+    ecr_repo_url: "{{ lookup('env', 'ECR_REPO_URL') }}"
+    aws_region: "eu-central-1"
+    ansible_ssh_private_key_file: "~/.ssh/habit-tracker-app.pem"
+    git_ssh_private_key_file: "~/.ssh/id_ed25519"
+    aws_credentials_file: "/Users/xinyu/Documents/workspace-devops/habit-tracker-infra/terraform/admin_accessKeys.csv" 
+
+  pre_tasks:
+    - name: Accept SSH host key for app_host
+      shell: ssh-keyscan -H {{ hostvars['app_host'].ansible_host }} >> ~/.ssh/known_hosts
+
+    - name: Copy AWS credentials CSV file to remote host
+      copy:
+        src: "{{ aws_credentials_file }}"
+        dest: /tmp/admin_accessKeys.csv
+
+    - name: Copy SSH private key for Git to remote host
+      copy:
+        src: "{{ git_ssh_private_key_file }}"
+        dest: /home/ubuntu/.ssh/id_ed25519
+        mode: '0600'
+
+    - name: Add GitHub to known hosts
+      shell: ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+  tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+        - unzip
+        - git
+        - python3
+        - python3-pip
+        - python3-venv
+        - docker.io
+        - postgresql-client
+      when: ansible_os_family == "Debian"
+
+    - name: Remove existing containers attached to the Jenkins network (if exists)
+      shell: |
+        docker ps -q --filter "network=jenkins" | xargs -r docker rm -f
+      ignore_errors: yes
+
+    - name: Remove existing Docker network (if exists)
+      shell: docker network rm jenkins || true
+      ignore_errors: yes
+
+    - name: Create Docker network for Jenkins
+      shell: docker network create jenkins
+      ignore_errors: yes
+
+    - name: Remove existing Docker-in-Docker container (if exists)
+      shell: docker rm -f jenkins-docker || true
+      ignore_errors: yes
+
+    - name: Run Docker-in-Docker container
+      shell: |
+        docker run --name jenkins-docker --rm --detach \
+          --privileged --network jenkins --network-alias docker \
+          --env DOCKER_TLS_CERTDIR=/certs \
+          --volume jenkins-docker-certs:/certs/client \
+          --volume jenkins-data:/var/jenkins_home \
+          --publish 2376:2376 \
+          docker:dind --storage-driver overlay2
+
+    - name: Create Dockerfile for Jenkins BlueOcean
+      copy:
+        dest: /home/ubuntu/Dockerfile
+        content: |
+          FROM jenkins/jenkins:2.426.1-jdk11
+          USER root
+          RUN apt-get update && apt-get install -y lsb-release python3-pip
+          RUN curl -fsSLo /usr/share/keyrings/docker-archive-keyring.asc \
+            https://download.docker.com/linux/debian/gpg
+          RUN echo "deb [arch=$(dpkg --print-architecture) \
+            signed-by=/usr/share/keyrings/docker-archive-keyring.asc] \
+            https://download.docker.com/linux/debian \
+            $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+          RUN apt-get update && apt-get install -y docker-ce-cli
+          USER jenkins
+          RUN jenkins-plugin-cli --plugins "blueocean:1.25.3 docker-workflow:1.28"
+
+    - name: Build Jenkins BlueOcean Docker image
+      shell: docker build -t myjenkins-blueocean:2.426.1 /home/ubuntu
+
+    - name: Pull Jenkins BlueOcean Docker image from registry (if build fails)
+      shell: |
+        docker pull devopsjourney1/jenkins-blueocean:2.332.3-1 && \
+        docker tag devopsjourney1/jenkins-blueocean:2.332.3-1 myjenkins-blueocean:2.332.3-1
+      ignore_errors: yes
+
+    - name: Remove existing Jenkins container (if exists)
+      shell: docker rm -f jenkins-blueocean || true
+      ignore_errors: yes
+
+    - name: Run Jenkins container with custom image
+      shell: |
+        docker run --name jenkins-blueocean --restart=on-failure --detach \
+          --network jenkins \
+          --env DOCKER_HOST=tcp://docker:2376 \
+          --env DOCKER_CERT_PATH=/certs/client \
+          --env DOCKER_TLS_VERIFY=1 \
+          --publish 8080:8080 --publish 50000:50000 \
+          --volume jenkins-data:/var/jenkins_home \
+          --volume jenkins-docker-certs:/certs/client:ro \
+          myjenkins-blueocean:2.426.1
+
+    - name: Install AWS CLI
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+      args:
+        creates: /usr/local/bin/aws
+
+    - name: Read AWS credentials from CSV file
+      shell: |
+        awk -F, 'NR==2 {print $1}' /tmp/admin_accessKeys.csv > /tmp/aws_access_key_id
+        awk -F, 'NR==2 {print $2}' /tmp/admin_accessKeys.csv > /tmp/aws_secret_access_key
+
+    - name: Configure AWS CLI with IAM user credentials
+      shell: |
+        mkdir -p ~/.aws
+        echo "[default]" > ~/.aws/credentials
+        echo "aws_access_key_id = $(cat /tmp/aws_access_key_id)" >> ~/.aws/credentials
+        echo "aws_secret_access_key = $(cat /tmp/aws_secret_access_key)" >> ~/.aws/credentials
+        echo "[default]" > ~/.aws/config
+        echo "region = {{ aws_region }}" >> ~/.aws/config
+
+    - name: Verify AWS CLI configuration
+      shell: aws sts get-caller-identity
+
+    - name: Debug ECR repo URL
+      debug:
+        msg: "ECR Repo URL: {{ ecr_repo_url }}"
+
+    - name: Authenticate to AWS ECR
+      shell: aws ecr get-login-password --region "{{ aws_region }}" | docker login --username AWS --password-stdin "{{ ecr_repo_url }}"
+
+    

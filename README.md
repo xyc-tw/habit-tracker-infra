@@ -1,3 +1,117 @@
+1. VPC: habit-tracker-vpc
+CIDR Block: 10.0.0.0/16
+Contains 4 subnets:
+Staging Public Subnet: 10.0.1.0/24 (for bastion, NAT gateway, and staging load balancer)
+Staging Private Subnet: 10.0.2.0/24 (for app, Jenkins, and RDS instances)
+Production Public Subnet: 10.0.3.0/24 (for bastion, NAT gateway, and production load balancer)
+Production Private Subnet: 10.0.4.0/24 (for app, Jenkins, and RDS instances)
+
+2. Internet Connectivity
+Internet Gateway (igw):
+Attached to the VPC to enable internet access for public subnets.
+Used by public-facing resources like bastions and load balancers.
+NAT Gateways:
+
+nat_staging: Deployed in public_staging to enable private staging resources to access the internet securely.
+nat_production: Deployed in public_production to enable private production resources to access the internet securely.
+
+Subnets and Resources
+1. Public Subnets:
+Staging Public Subnet (10.0.1.0/24):
+
+Resources:
+Bastion Host (staging_bastion):
+Belongs to bastion_sg.
+Allows SSH, HTTP/HTTPS, and ICMP traffic (controlled by security groups).
+NAT Gateway (nat_staging)
+Staging Load Balancer (staging_lb):
+HTTP/HTTPS listeners.
+Forwards traffic to app_tg (staging environment app EC2 instances).
+Production Public Subnet (10.0.3.0/24):
+
+Resources:
+Bastion Host (production_bastion):
+Belongs to bastion_sg.
+Allows SSH, HTTP/HTTPS, and ICMP traffic (controlled by security groups).
+NAT Gateway (nat_production)
+Production Load Balancer (production_lb):
+HTTP/HTTPS listeners.
+Forwards traffic to app_tg (production environment app EC2 instances).
+2. Private Subnets:
+Staging Private Subnet (10.0.2.0/24):
+
+Resources:
+Application EC2 Instances:
+Registered with the app_tg target group.
+Receives traffic from staging_lb.
+Belongs to the app_sg.
+Jenkins EC2 Instance:
+Belongs to the app_sg.
+Handles CI/CD workflows for staging.
+Connects to:
+AWS ECR (for image storage).
+Bastion host for management.
+RDS Instance:
+Stores app-related data.
+Accessible only by the app EC2 instances.
+Production Private Subnet (10.0.4.0/24):
+
+Resources:
+Application EC2 Instances:
+Registered with the app_tg target group.
+Receives traffic from production_lb.
+Belongs to the app_sg.
+Jenkins EC2 Instance:
+Belongs to the app_sg.
+Handles CI/CD workflows for production.
+Connects to:
+AWS ECR (for image storage).
+Bastion host for management.
+RDS Instance:
+Stores app-related data.
+Accessible only by the app EC2 instances.
+Security Groups
+Bastion Security Group (bastion_sg):
+
+Ingress Rules:
+SSH (port 22) allowed from trusted IPs (e.g., your office/home IP).
+ICMP traffic allowed from trusted IPs.
+HTTP/HTTPS (ports 80/443) allowed from trusted IPs for Jenkins UI.
+Egress Rules:
+Allow all traffic to enable connectivity with private subnets.
+App Security Group (app_sg):
+
+Ingress Rules:
+HTTP/HTTPS traffic allowed from the load balancers (staging_lb and production_lb).
+Allow SSH traffic from bastion_sg (for management and debugging).
+Egress Rules:
+Allow traffic to RDS, ECR, and other necessary services.
+Load Balancers
+Staging Load Balancer (staging_lb):
+
+Deployed in the staging_public subnet.
+Listeners:
+HTTP (port 80) and HTTPS (port 443).
+Targets: app_tg containing app EC2 instances in the staging private subnet.
+Production Load Balancer (production_lb):
+
+Deployed in the production_public subnet.
+Listeners:
+HTTP (port 80) and HTTPS (port 443).
+Targets: app_tg containing app EC2 instances in the production private subnet.
+Routing and Connectivity
+Route Tables:
+Public Subnet Route Tables:
+Routes:
+Local traffic within the VPC.
+Default route to the Internet Gateway (igw).
+Private Subnet Route Tables:
+Routes:
+Local traffic within the VPC.
+Default route to the NAT Gateway (nat_staging or nat_production).
+
+
+
 # Repo for the Infrastructure (Terraform & Ansible) setting
 
 
@@ -206,5 +320,24 @@ Automatically create an AWS Load Balancer (ALB).
 Register the EC2 nodes that are part of your Kubernetes cluster as targets in the Target Group.
 You will use the AWS Load Balancer Controller in Kubernetes to automate the provisioning and management of the ALB and routing.
 
+
+
+-- Ansible
+create ssh-key: ssh-keygen -t rsa -b 4096 -f ~/.ssh/habit-tracker-key -C "your-email@example.com"
+
+This generates:
+~/.ssh/habit-tracker-key: Your private key (keep this secure, never share it).
+~/.ssh/habit-tracker-key.pub: Your public key (this will be uploaded to AWS).
+
+
+Run ansible 
+ansible-playbook -i ansible/inventories/staging.ini ansible/playbooks/k8s-master.yml
+ansible-playbook -i ansible/inventories/staging.ini ansible/playbooks/k8s-workers.yml
+ansible-playbook -i ansible/inventories/production.ini ansible/playbooks/k8s-master.yml
+ansible-playbook -i ansible/inventories/production.ini ansible/playbooks/k8s-workers.yml
+
+
+
+Setup for Ansible
 
 
