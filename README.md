@@ -1,343 +1,134 @@
-1. VPC: habit-tracker-vpc
-CIDR Block: 10.0.0.0/16
-Contains 4 subnets:
-Staging Public Subnet: 10.0.1.0/24 (for bastion, NAT gateway, and staging load balancer)
-Staging Private Subnet: 10.0.2.0/24 (for app, Jenkins, and RDS instances)
-Production Public Subnet: 10.0.3.0/24 (for bastion, NAT gateway, and production load balancer)
-Production Private Subnet: 10.0.4.0/24 (for app, Jenkins, and RDS instances)
-
-2. Internet Connectivity
-Internet Gateway (igw):
-Attached to the VPC to enable internet access for public subnets.
-Used by public-facing resources like bastions and load balancers.
-NAT Gateways:
-
-nat_staging: Deployed in public_staging to enable private staging resources to access the internet securely.
-nat_production: Deployed in public_production to enable private production resources to access the internet securely.
-
-Subnets and Resources
-1. Public Subnets:
-Staging Public Subnet (10.0.1.0/24):
-
-Resources:
-Bastion Host (staging_bastion):
-Belongs to bastion_sg.
-Allows SSH, HTTP/HTTPS, and ICMP traffic (controlled by security groups).
-NAT Gateway (nat_staging)
-Staging Load Balancer (staging_lb):
-HTTP/HTTPS listeners.
-Forwards traffic to app_tg (staging environment app EC2 instances).
-Production Public Subnet (10.0.3.0/24):
-
-Resources:
-Bastion Host (production_bastion):
-Belongs to bastion_sg.
-Allows SSH, HTTP/HTTPS, and ICMP traffic (controlled by security groups).
-NAT Gateway (nat_production)
-Production Load Balancer (production_lb):
-HTTP/HTTPS listeners.
-Forwards traffic to app_tg (production environment app EC2 instances).
-2. Private Subnets:
-Staging Private Subnet (10.0.2.0/24):
-
-Resources:
-Application EC2 Instances:
-Registered with the app_tg target group.
-Receives traffic from staging_lb.
-Belongs to the app_sg.
-Jenkins EC2 Instance:
-Belongs to the app_sg.
-Handles CI/CD workflows for staging.
-Connects to:
-AWS ECR (for image storage).
-Bastion host for management.
-RDS Instance:
-Stores app-related data.
-Accessible only by the app EC2 instances.
-Production Private Subnet (10.0.4.0/24):
-
-Resources:
-Application EC2 Instances:
-Registered with the app_tg target group.
-Receives traffic from production_lb.
-Belongs to the app_sg.
-Jenkins EC2 Instance:
-Belongs to the app_sg.
-Handles CI/CD workflows for production.
-Connects to:
-AWS ECR (for image storage).
-Bastion host for management.
-RDS Instance:
-Stores app-related data.
-Accessible only by the app EC2 instances.
-Security Groups
-Bastion Security Group (bastion_sg):
-
-Ingress Rules:
-SSH (port 22) allowed from trusted IPs (e.g., your office/home IP).
-ICMP traffic allowed from trusted IPs.
-HTTP/HTTPS (ports 80/443) allowed from trusted IPs for Jenkins UI.
-Egress Rules:
-Allow all traffic to enable connectivity with private subnets.
-App Security Group (app_sg):
-
-Ingress Rules:
-HTTP/HTTPS traffic allowed from the load balancers (staging_lb and production_lb).
-Allow SSH traffic from bastion_sg (for management and debugging).
-Egress Rules:
-Allow traffic to RDS, ECR, and other necessary services.
-Load Balancers
-Staging Load Balancer (staging_lb):
-
-Deployed in the staging_public subnet.
-Listeners:
-HTTP (port 80) and HTTPS (port 443).
-Targets: app_tg containing app EC2 instances in the staging private subnet.
-Production Load Balancer (production_lb):
-
-Deployed in the production_public subnet.
-Listeners:
-HTTP (port 80) and HTTPS (port 443).
-Targets: app_tg containing app EC2 instances in the production private subnet.
-Routing and Connectivity
-Route Tables:
-Public Subnet Route Tables:
-Routes:
-Local traffic within the VPC.
-Default route to the Internet Gateway (igw).
-Private Subnet Route Tables:
-Routes:
-Local traffic within the VPC.
-Default route to the NAT Gateway (nat_staging or nat_production).
+# Final Simplified Version
+![CICD workflow](final-infra.jpg)
 
 
+# Habit Tracker Infrastructure Setup
 
-# Repo for the Infrastructure (Terraform & Ansible) setting
+## 1. VPC Configuration
+- **VPC:** `habit-tracker-vpc` (CIDR Block: `10.0.0.0/16`)
+- **Subnets:**
+  - **Staging Public Subnet:** `10.0.1.0/24` (for bastion, NAT gateway, staging load balancer)
+  - **Staging Private Subnet:** `10.0.2.0/24` (for app, Jenkins, RDS)
+  - **Production Public Subnet:** `10.0.3.0/24` (for bastion, NAT gateway, production load balancer)
+  - **Production Private Subnet:** `10.0.4.0/24` (for app, Jenkins, RDS)
 
+## 2. Internet Connectivity
+- **Internet Gateway (igw)**: Attached to VPC for internet access to public subnets.
+- **NAT Gateways:**
+  - `nat_staging`: Deployed in staging public subnet.
+  - `nat_production`: Deployed in production public subnet.
 
-<!-- Step 1: install terraform, for knowing the version installed, run terraform -v
-Step 2: Initialize Terraform
-Run terraform init
-Downloads necessary provider plugins (e.g., AWS or Google Cloud provider).
-Sets up the working directory for Terraform.
-Step 3. Plan the Infrastructure
-Run the plan command to preview the changes Terraform will make:
-terraform plan -out=tfplan
-Terraform evaluates the configurations and shows what resources will be created, updated, or destroyed.
-Optional: Save the plan to a file (tfplan) to ensure the applied plan matches what you previewed.
-Step 4. Apply the Configuration
-Apply the planned changes to provision your infrastructure:
-terraform apply tfplan
-Terraform will execute the plan saved in the tfplan file.
-You’ll be prompted to confirm before proceeding. Type yes to continue.
-If you didn’t save a plan file in the previous step, you can simply run:
-terraform apply
-Step 5: Verify Outputs
-After applying, Terraform will display the values defined in your outputs.tf file. These might include:
-VPC IDs
-Subnet IDs
-EC2 instance public IPs
-Database connection strings
-Load Balancer DNS names
-Step 6. Access Resources
-Use the AWS Console (or other provider console) to view the resources.
-Retrieve public IPs or DNS names for services like EC2 or load balancers from Terraform's output.
-Step 7. Update or Change Resources
-If you modify your Terraform files:
+## 3. Subnets and Resources
+### Public Subnets
+#### Staging Public Subnet (`10.0.1.0/24`)
+- **Bastion Host:** `staging_bastion` (SSH, HTTP/HTTPS, ICMP)
+- **NAT Gateway:** `nat_staging`
+- **Load Balancer:** `staging_lb` (HTTP/HTTPS, forwards traffic to app instances)
 
-Run terraform plan again to preview the changes.
-Run terraform apply to update the infrastructure.
-8. Destroy Resources (Optional)
-If you want to tear down your infrastructure, use:
+#### Production Public Subnet (`10.0.3.0/24`)
+- **Bastion Host:** `production_bastion`
+- **NAT Gateway:** `nat_production`
+- **Load Balancer:** `production_lb`
 
-bash
-Copy code
-terraform destroy
-Terraform will prompt you to confirm.
-This will remove all resources defined in your configuration. -->
+### Private Subnets
+#### Staging Private Subnet (`10.0.2.0/24`)
+- **Application EC2 Instances:** Registered with `app_tg`.
+- **Jenkins EC2 Instance:** CI/CD workflows, connects to AWS ECR.
+- **RDS Instance:** Stores app-related data.
 
+#### Production Private Subnet (`10.0.4.0/24`)
+- **Application EC2 Instances:** Registered with `app_tg`.
+- **Jenkins EC2 Instance:** CI/CD workflows, connects to AWS ECR.
+- **RDS Instance:** Stores app-related data.
 
-## After the research is the decision made for the infrastructure
-- using aws services
-- separate staging and production environments
+## 4. Security Groups
+### Bastion Security Group (`bastion_sg`)
+- **Ingress:** SSH (22), ICMP, HTTP/HTTPS (trusted IPs)
+- **Egress:** Allow all traffic
 
-## directory structure
+### App Security Group (`app_sg`)
+- **Ingress:** HTTP/HTTPS from `staging_lb` and `production_lb`, SSH from `bastion_sg`
+- **Egress:** Traffic to RDS, ECR, and necessary services
+
+## 5. Load Balancers
+- **Staging LB:** HTTP/HTTPS (targets `app_tg` in staging private subnet)
+- **Production LB:** HTTP/HTTPS (targets `app_tg` in production private subnet)
+
+## 6. Routing and Connectivity
+- **Public Subnet Route Tables:**
+  - Routes local traffic within VPC
+  - Default route to Internet Gateway
+- **Private Subnet Route Tables:**
+  - Routes local traffic within VPC
+  - Default route to NAT Gateway
+
+## 7. Infrastructure Setup with Terraform & Ansible
+### Terraform
+1. **Install Terraform** (`terraform -v`)
+2. **Initialize Terraform:** `terraform init`
+3. **Plan Infrastructure:** `terraform plan -out=tfplan`
+4. **Apply Configuration:** `terraform apply tfplan`
+5. **Verify Outputs:** Check Terraform output values
+6. **Access Resources:** View AWS Console resources
+7. **Update Resources:** Modify Terraform files, rerun `terraform plan` & `terraform apply`
+8. **Destroy Resources (Optional):** `terraform destroy`
+
+### Terraform Directory Structure
+```
 terraform/
 ├── main.tf           # Shared configurations
 ├── variables.tf      # Variables for all environments
 ├── outputs.tf        # Outputs for all environments
-├── staging.tfvars    # Environment-specific values for staging
-└── production.tfvars # Environment-specific values for production
+├── staging.tfvars    # Staging environment variables
+└── production.tfvars # Production environment variables
+```
 
+## 8. Kubernetes Setup
+- **Kubernetes Master Nodes:** 2 EC2 instances (staging & production)
+- **Kubernetes Clusters:** Each contains 3 nodes (Next.js, Jenkins, ArgoCD)
+- **RDS:** 2 databases (staging & production)
+- **Security Groups:**
+  - **Master Node:** Allow port 6443
+  - **Worker Nodes:** Allow HTTP/HTTPS, internal cluster communication
+  - **RDS:** Allow port 5432 from worker nodes
+  - **Jenkins:** Allow port 8080 (trusted IPs only)
+  - **ArgoCD:** Allow port 8080 or Ingress (trusted sources)
 
-## Summary of Requirements:
- 1. 1 VPC
- 2. 4 subnets: Public Staging, Public Production, Private Staging, Private Production
- 3. Security Groups for RDS, k8s master and k8s cluster, Additional Considerations for Next.js, Jenkins, and ArgoCD
- 4. IAM Role for EC2 instances
- 5. EC2 Instances:
-- 2 EC2 for the Kubernetes master node(staging and production).
-- 2 Kubernetes cluster, each contains 3 nodes(Nextjs, Jenkins, ArgoCD)
-- 2 RDS
+## 9. Load Balancer & SSL Configuration
+- **ALB:** Handles HTTP (80) and HTTPS (443) traffic
+- **ACM Certificate:** SSL certificate from AWS ACM
+- **Target Group:** Routes traffic to Kubernetes pods
+- **Security Groups:** ALB allows HTTP/HTTPS, Kubernetes nodes allow traffic from ALB
+- **Kubernetes Integration:**
+  - Service type `LoadBalancer`
+  - AWS Load Balancer Controller for ALB provisioning
 
-Security Group Strategy for Your Setup
-Component	SG Rules
-Master Node	- Allow port 6443 from trusted sources.
-Worker Nodes	- Allow port 80/443 (HTTP/HTTPS) for Next.js traffic.
-- Allow internal cluster communication (ports 10250–10255).
-RDS	- Allow port 5432 (Postgres) only from worker nodes.
-Jenkins	- Allow port 8080 for external access (trusted IPs only).
-ArgoCD	- Allow port 8080 (or Ingress) for trusted sources.
+## 10. Ansible Setup
+### SSH Key Generation
+```sh
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/habit-tracker-key -C "your-email@example.com"
+```
+- Private Key: `~/.ssh/habit-tracker-key` (Keep secure)
+- Public Key: `~/.ssh/habit-tracker-key.pub` (Upload to AWS)
 
-Provisioning the Load Balancer infrastructure using Terraform.
-Configuring Kubernetes (K8s) to use the Load Balancer.
-
-
-
-Staging Environment:
-1 EC2 for running Next.js (staging).
-1 EC2 for Jenkins (CI/CD for staging).
-1 EC2 for ArgoCD (staging deployment).
-Production Environment:
-1 EC2 for running Next.js (production).
-1 EC2 for Jenkins (CI/CD for production).
-1 EC2 for ArgoCD (production deployment).
-
-1 EC2 for k8s master node
-
-2 RDS
-
-
-
-## 1. Define Application Requirements
-- **Web App**: server to host the Next.js app
-  - Type: Web application.
-  - Requirement: 
-    - A server to host the Next.js app.
-    - Elastic Load Balancer (ELB) to distribute traffic (for scalability).
-Compute resources for the server.
-Elastic Load Balancer (ELB) to distribute traffic (for scalability).
-- **Database**: 
-  - Type: Relational database.
-  - Requirement:
-    - Database instances (RDS).
-    - Persistent storage for data (e.g., EBS volumes for EC2 or automatic storage for RDS).
-    - Network security: Security groups to allow access to the database.
-- **Kubernetes**:
-  - Type: Cluster of virtual machines to run Docker containers.
-  - Requirement:
-    - AWS EKS on EC2 instances.
-    - Master node(s) for controlling the cluster.
-    - Worker nodes to run your application containers (Next.js, Database).
-    - Auto Scaling: to scale worker nodes as per load.
-    - VPC, Subnets: For networking.
-    - Ingress controller: for routing external traffic to internal services in Kubernetes.
-    - Persistent Volumes: For storing data, especially for your database.    
-- **CI/CD**:
-  - Jenkins:
-    - EC2 instance(s) to host Jenkins.
-    - ECR (Elastic Container Registry) to store Docker images.
-    - IAM roles and policies to allow Jenkins to push to ECR and deploy to Kubernetes.
-  - ArgoCD:
-    - Kubernetes resources to run ArgoCD.
-    - Kubernetes cluster access for ArgoCD to deploy changes automatically.
-- **Monitoring** (Grafana, Prometheus, Metabase):
-  - Compute resources for monitoring tools.
-  - Storage for metrics and logs.
-  - Network access to communicate with Kubernetes and databases.
-
-
-
-
-Optional
-5. Elastic Load Balancer (Optional for Next.js):
-6. Monitoring
-
-
-
-
-You have a Next.js application running inside Kubernetes, which is exposed to the public internet through an Application Load Balancer (ALB) on AWS. We want both HTTP (port 80) and HTTPS (port 443) to be accessible, and we also want to handle the security part using an SSL certificate.
-
-To summarize, these components are involved:
-
-Listener on the ALB to accept traffic (both HTTP and HTTPS)
-ACM Certificate ARN to secure the HTTPS traffic
-Target Group to route traffic to your Next.js application running in Kubernetes
-Security Group to control access between ALB, your Kubernetes pods, and other resources.
-Now let's break down how everything works:
-
-1. The Listener and HTTP/HTTPS Traffic
-A Listener on the ALB listens for incoming traffic on specific ports (in your case, port 80 for HTTP and port 443 for HTTPS).
-
-HTTP Listener (port 80): The listener will accept non-secure HTTP traffic (just plain text communication).
-HTTPS Listener (port 443): The listener will accept secure HTTPS traffic, which is encrypted. The encryption and decryption happen using an SSL/TLS certificate, which we'll get from AWS ACM (AWS Certificate Manager).
-You can configure the Listener to handle both types of traffic (HTTP and HTTPS):
-
-When traffic arrives at port 80 (HTTP), it will be redirected to port 443 (HTTPS) for security. This is handled through the Nginx Ingress Controller or ALB itself if you have the proper rules set.
-The HTTPS Listener will decrypt the traffic using the SSL/TLS certificate.
-
-2. ACM Certificate ARN and HTTPS
-ACM Certificate ARN is the Amazon Resource Name for your SSL/TLS certificate stored in AWS Certificate Manager (ACM).
-
-This certificate is used to encrypt HTTPS traffic.
-You will need to provision an SSL certificate using ACM for your domain (e.g., yourdomain.com) and use the ARN (Amazon Resource Name) of this certificate in the ALB listener.
-To generate an ACM certificate:
-
-Go to AWS ACM (Certificate Manager) and request a certificate for your domain.
-AWS will ask you to validate ownership of the domain (e.g., via email or DNS).
-Once validated, you can get the ARN (Amazon Resource Name) for the certificate.
-Use this ARN in the ALB Listener to enable secure HTTPS traffic.
-
-3. Target Group (How ALB Routes Traffic)
-The Target Group is where the ALB sends traffic after the listener accepts it.
-
-A Target Group defines the EC2 instances or pods that the load balancer will route traffic to.
-In your case, the Target Group will contain the Kubernetes pods that run Next.js.
-How it works:
-
-When the ALB receives an HTTP or HTTPS request, it forwards the traffic to the Target Group (based on your listener configuration).
-The Target Group can register targets dynamically, which are the pods running in your Kubernetes cluster.
-The Target Group knows which pods are part of it by using the AWS Load Balancer Controller in your Kubernetes cluster.
-
-4. Security Groups
-A Security Group acts as a virtual firewall to control inbound and outbound traffic to your resources (e.g., EC2 instances, ALBs, etc.).
-
-Here’s how it works for your scenario:
-
-Security Group for ALB: The ALB will have a security group allowing inbound traffic from the internet (anyone can access it on HTTP/HTTPS ports 80/443).
-ALB Security Group allows traffic on ports 80 (HTTP) and 443 (HTTPS).
-Security Group for Kubernetes (EC2 instances that are worker nodes):
-
-You would need a Security Group for your EC2 instances that allows traffic from the ALB (on the HTTP/HTTPS ports).
-The Kubernetes pods running Next.js will be the targets for the ALB's target group, but traffic will flow through the EC2 instances hosting the Kubernetes nodes.
-
-5. Kubernetes Integration
-In Kubernetes, you will define a Service of type LoadBalancer to allow Kubernetes to create the actual load balancer in AWS (ALB in this case).
-
-This Kubernetes Service will:
-
-Automatically create an AWS Load Balancer (ALB).
-Register the EC2 nodes that are part of your Kubernetes cluster as targets in the Target Group.
-You will use the AWS Load Balancer Controller in Kubernetes to automate the provisioning and management of the ALB and routing.
-
-
-
--- Ansible
-create ssh-key: ssh-keygen -t rsa -b 4096 -f ~/.ssh/habit-tracker-key -C "your-email@example.com"
-
-This generates:
-~/.ssh/habit-tracker-key: Your private key (keep this secure, never share it).
-~/.ssh/habit-tracker-key.pub: Your public key (this will be uploaded to AWS).
-
-
-Run ansible 
+### Running Ansible Playbooks
+```sh
 ansible-playbook -i ansible/inventories/staging.ini ansible/playbooks/k8s-master.yml
 ansible-playbook -i ansible/inventories/staging.ini ansible/playbooks/k8s-workers.yml
 ansible-playbook -i ansible/inventories/production.ini ansible/playbooks/k8s-master.yml
 ansible-playbook -i ansible/inventories/production.ini ansible/playbooks/k8s-workers.yml
+```
 
-
-
-Setup for Ansible
-
+## 11. Summary
+1. **1 VPC**
+2. **4 Subnets**: Public & Private (Staging, Production)
+3. **Security Groups**: RDS, Kubernetes, Next.js, Jenkins, ArgoCD
+4. **IAM Roles** for EC2
+5. **EC2 Instances**:
+   - **K8s Master Nodes**: 2 (Staging, Production)
+   - **Worker Nodes**: 3 per cluster (Next.js, Jenkins, ArgoCD)
+   - **RDS Instances**: 2
+6. **Load Balancers & SSL** for Next.js
+7. **CI/CD Pipeline**: Jenkins & ArgoCD
+8. **Monitoring** (Optional): Grafana, Prometheus, Metabase
 
