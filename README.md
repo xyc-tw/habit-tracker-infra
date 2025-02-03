@@ -1,3 +1,8 @@
+## Related Repositories:
+- [Projektplan](https://github.com/xyc-tw/Softwaretechnik-Projekt)
+- [App(Next.js) Repository](https://github.com/xyc-tw/habit-tracker-app/tree/main)  
+- [Infrastructure Repository](https://github.com/xyc-tw/habit-tracker-infra) 
+
 # Final Simplified Version
 ![CICD workflow](final-infra.jpg)
 
